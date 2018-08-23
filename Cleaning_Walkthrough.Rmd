@@ -1,0 +1,126 @@
+---
+title: "Cleaning Data Walk Through"
+output:
+  html_document:
+    theme: yeti
+---
+## Introduction
+
+This walkthrough is an example of cleaning data, in this case to be used for modelling. Here, the training data for a model includes two columns of information that the test data does not, so these need to be added on from another source.
+
+To be able to run this exact code, you will need your file structure set up with a _data_ folder inside your working directory. _analysis_ and _output_ folders are also recommended to keep your files tidy, but you can follow this walkthrough without. The data you will need can be found on the [Github repository for this Hackathon](https://github.com/MangoTheCat/rss-2018-hackathon). 
+
+To begin with we will load the packages need during this walkthrough. You may need to install first.
+
+```{r libraries, message = FALSE, warning = FALSE}
+library(dplyr)
+```
+
+## Investigating the Data
+The data we are looking at is election data from the 2015 and 2017 general elections, where a model will be trained on 2015 results and tested on 2017 results. The data sets available to us are `ge_2015_2017_prediction_data.csv` and `HoC-GE2017-constituency-results.csv`, both of which you should **download** from the [Github](https://github.com/MangoTheCat/rss-2018-hackathon) into your _data_ folder. We first upload these files as dataframes.
+
+```{r upload_data, cache = TRUE}
+pred_data <- read.csv("data/ge_2015_2017_prediction_data.csv")
+actual_data <- read.csv("data/HoC-GE2017-constituency-results.csv")
+```
+
+The first file has everything that is needed for the model except the name of the winning party and the percentage of the vote secured by that party. These can be found from the second file, and so we need to find a way of combining these two files.
+
+Let's look at the column names to see if there are any common columns.
+```{r look_cols}
+colnames(pred_data)
+colnames(actual_data)
+```
+
+From looking at these column names, we can see that both include a constituency name and some sort of ID. First we look at the constituency names to see if they match.
+
+```{r check_names}
+length(setdiff(unique(pred_data$Constituency.Name),
+               unique(actual_data$constituency_name)))
+```
+
+There are `r length(setdiff(unique(pred_data$Constituency.Name), unique(actual_data$constituency_name)))` mismatches in the names, and fixing all the strings to match will be a lot of work, so let's look at the ID fields instead.
+
+```{r check_ids}
+head(unique(pred_data$Press.Association.ID.Number))
+head(unique(actual_data$ons_id))
+length(unique(pred_data$Press.Association.ID.Number))
+length((unique(actual_data$ons_id)))
+```
+
+We can see that although the two types of IDs do not match, there are the same number of unique IDs of both types, meaning that it should be possible to match them. Luckily, the `ge_2015_results.csv` file available on the [Github](https://github.com/MangoTheCat/rss-2018-hackathon), contains both types of ID and so we can use it for matching. You should **download** this file into your _data_ folder before continuing. Now we will upload this file, and look at the first few column names.
+
+## Matching IDs
+
+```{r upload_matching, cache = TRUE}
+ID_match <- read.csv("data/ge_2015_results.csv")
+colnames(ID_match)[1:10]
+```
+
+We assume the `Press.Association.ID.Number` columns match, and if we look at `Constituency.ID` we can see it matches `ons_id`.
+
+```{r ons_id_check}
+head(ID_match$Constituency.ID)
+head(actual_data$ons_id)
+```
+
+As we only need these two ID columns to give us a reference table, we delete all other columns and rename `Constituency.ID` to `ons_id`, so it can be merged later. We will then check the table is as expected.
+
+```{r reference_table, results = 'hide', cache = TRUE}
+ID_match <- ID_match[, 1:2]
+colnames(ID_match)[2] <- "ons_id"
+head(ID_match)
+```
+
+```{r reference_table_out, results = 'markup', echo = FALSE}
+knitr::kable(head(ID_match))
+```
+
+Now that we have a reference table linking the two ID numbers together, we can merge this with the `actual_data` dataframe by the `ons_id` column, so that the `actual_data` contains `Press.Association.ID.Number`. We can then check that this extra column has indeed been added correctly by looking at column names and checking that every constituency now has a `Press.Association.ID.Number`.
+
+```{r merge_actual, cache = TRUE}
+actual_data <- merge(actual_data, ID_match)
+colnames(actual_data)
+sum(is.na(actual_data$Press.Association.ID.Number))
+```
+
+## Selecting Useful Data
+
+We are now at the point where we have a matching ID column in our `pred_data` and `actual_data`, but as we do not need all the columns from `actual_data`, we are going to pick out and calculate what we need before merging. The data missing from the `pred_data` is the winning party and the percentage of valid votes that went to that party. The first is already present in the `actual_data` as `first_party`, but the second will have to be calculated using `valid_votes` and `majority`. This means we can select only these columns into a dataframe and calculate the percentage, then drop the columns used only for percentage calculations. We will also name the columns to match the column names used in the model. 
+
+```{r needed_data, cache = TRUE}
+need_actual_data <- select(actual_data, c("Press.Association.ID.Number",
+                                          "first_party", "valid_votes", "majority"))
+colnames(need_actual_data)[2] <- "actual_win_now"
+need_actual_data$actual_pc_now <- need_actual_data$majority/need_actual_data$valid_votes
+need_actual_data <- select(need_actual_data, c("Press.Association.ID.Number",
+                                          "actual_win_now", "actual_pc_now"))
+```
+
+Before continuing, let's check that this dataframe is exactly as we expect.
+```{r check_needed, eval = FALSE}
+dim(need_actual_data)
+head(need_actual_data)
+```
+
+```{r check_needed_out, echo = FALSE}
+dim(need_actual_data)
+knitr::kable(head(need_actual_data[order(need_actual_data$Press.Association.ID.Number), ]), row.names = FALSE)
+```
+
+## Merging the Dataframes
+Now that we have the extra data we need, and an ID column that matches to `pred_data`, we can merge the two to give our full data set.
+
+```{r final_merge, cache = TRUE}
+full_data <- merge(pred_data, need_actual_data)
+dim(full_data)
+sum(is.na(full_data))
+```
+
+## Saving the File
+
+We can see that the merge worked - we have two extra columns, the same number of rows, and no NA values, showing us that we have lost no data during this process. As a final step we will save this dataframe as a new csv file.
+
+```{r save_file}
+write.csv(full_data, "data/ge_2017_results.csv")
+```
