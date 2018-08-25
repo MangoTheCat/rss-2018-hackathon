@@ -60,8 +60,7 @@ colnames(ID_match)[1:10]
 We assume the `Press.Association.ID.Number` columns match, and if we look at `Constituency.ID` we can see it matches `ons_id`.
 
 ```{r ons_id_check}
-head(ID_match$Constituency.ID)
-head(actual_data$ons_id)
+length(setdiff(ID_match$Constituency.ID, actual_data$ons_id))
 ```
 
 As we only need these two ID columns to give us a reference table, we delete all other columns and rename `Constituency.ID` to `ons_id`, so it can be merged later. We will then check the table is as expected.

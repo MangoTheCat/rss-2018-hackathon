@@ -129,15 +129,15 @@ $(document).ready(function () {
 <h2>Introduction</h2>
 <p>This walkthrough is an example of cleaning data, in this case to be used for modelling. Here, the training data for a model includes two columns of information that the test data does not, so these need to be added on from another source.</p>
 <p>To be able to run this exact code, you will need your file structure set up with a <em>data</em> folder inside your working directory. <em>analysis</em> and <em>output</em> folders are also recommended to keep your files tidy, but you can follow this walkthrough without. The data you will need can be found on the <a href="https://github.com/MangoTheCat/rss-2018-hackathon">Github repository for this Hackathon</a>.</p>
-<p>To begin with we will load the packages need during this walkthrough. You may need to install first.</p>
+<p>To begin with we will load the packages we need during this walkthrough. You may need to install them first.</p>
 <pre class="r"><code>library(dplyr)</code></pre>
 </div>
 <div id="investigating-the-data" class="section level2">
 <h2>Investigating the Data</h2>
-<p>The data we are looking at is election data from the 2015 and 2017 general elections, where a model will be trained on 2015 results and tested on 2017 results. The data sets available to us are <code>ge_2015_2017_prediction_data.csv</code> and <code>HoC-GE2017-constituency-results.csv</code>, both of which you should <strong>download</strong> from the <a href="https://github.com/MangoTheCat/rss-2018-hackathon">Github</a> into your <em>data</em> folder. We first upload these files as dataframes.</p>
+<p>The data we are looking at is election data from the 2015 and 2017 general elections, where a model will be trained on 2015 results and tested on 2017 results. The data sets available to us are <code>ge_2015_2017_prediction_data.csv</code> and <code>HoC-GE2017-constituency-results.csv</code>, both of which you should <strong>download</strong> from the <a href="https://github.com/MangoTheCat/rss-2018-hackathon">Github repository</a> into your <em>data</em> folder. We first upload these files as dataframes.</p>
 <pre class="r"><code>pred_data &lt;- read.csv(&quot;data/ge_2015_2017_prediction_data.csv&quot;)
 actual_data &lt;- read.csv(&quot;data/HoC-GE2017-constituency-results.csv&quot;)</code></pre>
-<p>The first file has everything that is needed for the model except the name of the winning party and the percentage of the vote secured by that party. These can be found from the second file, and so we need to find a way of combining these two files.</p>
+<p>The first file has everything that is needed for the model, except the name of the winning party and the percentage of the vote secured by that party. These can be found from the second file, and so we need to find a way of combining these two files.</p>
 <p>Let’s look at the column names to see if there are any common columns.</p>
 <pre class="r"><code>colnames(pred_data)</code></pre>
 <pre><code>##  [1] &quot;Press.Association.ID.Number&quot;     &quot;Constituency.Name&quot;              
@@ -172,7 +172,7 @@ actual_data &lt;- read.csv(&quot;data/HoC-GE2017-constituency-results.csv&quot;)
 <pre class="r"><code>length(setdiff(unique(pred_data$Constituency.Name),
                unique(actual_data$constituency_name)))</code></pre>
 <pre><code>## [1] 264</code></pre>
-<p>There are 264 mismatches in the names, and fixing all the strings to match will be a lot of work, so let’s look at the ID fields instead.</p>
+<p>There are a <strong>lot</strong> of mismatches in the names, and fixing all the strings to match will be a lot of work, so let’s look at the ID fields instead.</p>
 <pre class="r"><code>head(unique(pred_data$Press.Association.ID.Number))</code></pre>
 <pre><code>## [1] 1 2 3 4 5 6</code></pre>
 <pre class="r"><code>head(unique(actual_data$ons_id))</code></pre>
@@ -182,7 +182,7 @@ actual_data &lt;- read.csv(&quot;data/HoC-GE2017-constituency-results.csv&quot;)
 <pre><code>## [1] 650</code></pre>
 <pre class="r"><code>length((unique(actual_data$ons_id)))</code></pre>
 <pre><code>## [1] 650</code></pre>
-<p>We can see that although the two types of IDs do not match, there are the same number of unique IDs of both types, meaning that it should be possible to match them. Luckily, the <code>ge_2015_results.csv</code> file available on the <a href="https://github.com/MangoTheCat/rss-2018-hackathon">Github</a>, contains both types of ID and so we can use it for matching. You should <strong>download</strong> this file into your <em>data</em> folder before continuing. Now we will upload this file, and look at the first few column names.</p>
+<p>We can see that although the two types of IDs do not match, there are the same number of unique IDs of both types, meaning that it should be possible to match them. Luckily, the <code>ge_2015_results.csv</code> file available on the <a href="https://github.com/MangoTheCat/rss-2018-hackathon">Github repository</a>, contains both types of ID and so we can use it for matching. You should <strong>download</strong> this file into your <em>data</em> folder before continuing. Now we will upload this file, and look at the first few column names.</p>
 </div>
 <div id="matching-ids" class="section level2">
 <h2>Matching IDs</h2>
@@ -194,12 +194,8 @@ colnames(ID_match)[1:10]</code></pre>
 ##  [7] &quot;Region&quot;                      &quot;Country&quot;                    
 ##  [9] &quot;Election.Year&quot;               &quot;Electorate&quot;</code></pre>
 <p>We assume the <code>Press.Association.ID.Number</code> columns match, and if we look at <code>Constituency.ID</code> we can see it matches <code>ons_id</code>.</p>
-<pre class="r"><code>head(ID_match$Constituency.ID)</code></pre>
-<pre><code>## [1] W07000049 W07000058 S14000001 S14000002 S14000058 S14000003
-## 650 Levels: E14000530 E14000531 E14000532 E14000533 E14000534 ... W07000080</code></pre>
-<pre class="r"><code>head(actual_data$ons_id)</code></pre>
-<pre><code>## [1] W07000049 W07000058 S14000001 S14000002 S14000003 E14000530
-## 650 Levels: E14000530 E14000531 E14000532 E14000533 E14000534 ... W07000080</code></pre>
+<pre class="r"><code>length(setdiff(ID_match$Constituency.ID, actual_data$ons_id))</code></pre>
+<pre><code>## [1] 0</code></pre>
 <p>As we only need these two ID columns to give us a reference table, we delete all other columns and rename <code>Constituency.ID</code> to <code>ons_id</code>, so it can be merged later. We will then check the table is as expected.</p>
 <pre class="r"><code>ID_match &lt;- ID_match[, 1:2]
 colnames(ID_match)[2] &lt;- &quot;ons_id&quot;
