@@ -39,7 +39,7 @@ length(setdiff(unique(pred_data$Constituency.Name),
                unique(actual_data$constituency_name)))
 ```
 
-There are `r length(setdiff(unique(pred_data$Constituency.Name), unique(actual_data$constituency_name)))` mismatches in the names, and fixing all the strings to match will be a lot of work, so let's look at the ID fields instead.
+There are a **lot** of mismatches in the names, and fixing all the strings to match will be a lot of work, so let's look at the ID fields instead.
 
 ```{r check_ids}
 head(unique(pred_data$Press.Association.ID.Number))
