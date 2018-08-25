@@ -10,21 +10,21 @@ This walkthrough is an example of cleaning data, in this case to be used for mod
 
 To be able to run this exact code, you will need your file structure set up with a _data_ folder inside your working directory. _analysis_ and _output_ folders are also recommended to keep your files tidy, but you can follow this walkthrough without. The data you will need can be found on the [Github repository for this Hackathon](https://github.com/MangoTheCat/rss-2018-hackathon). 
 
-To begin with we will load the packages need during this walkthrough. You may need to install first.
+To begin with we will load the packages we need during this walkthrough. You may need to install them first.
 
 ```{r libraries, message = FALSE, warning = FALSE}
 library(dplyr)
 ```
 
 ## Investigating the Data
-The data we are looking at is election data from the 2015 and 2017 general elections, where a model will be trained on 2015 results and tested on 2017 results. The data sets available to us are `ge_2015_2017_prediction_data.csv` and `HoC-GE2017-constituency-results.csv`, both of which you should **download** from the [Github](https://github.com/MangoTheCat/rss-2018-hackathon) into your _data_ folder. We first upload these files as dataframes.
+The data we are looking at is election data from the 2015 and 2017 general elections, where a model will be trained on 2015 results and tested on 2017 results. The data sets available to us are `ge_2015_2017_prediction_data.csv` and `HoC-GE2017-constituency-results.csv`, both of which you should **download** from the [Github repository](https://github.com/MangoTheCat/rss-2018-hackathon) into your _data_ folder. We first upload these files as dataframes.
 
 ```{r upload_data, cache = TRUE}
 pred_data <- read.csv("data/ge_2015_2017_prediction_data.csv")
 actual_data <- read.csv("data/HoC-GE2017-constituency-results.csv")
 ```
 
-The first file has everything that is needed for the model except the name of the winning party and the percentage of the vote secured by that party. These can be found from the second file, and so we need to find a way of combining these two files.
+The first file has everything that is needed for the model, except the name of the winning party and the percentage of the vote secured by that party. These can be found from the second file, and so we need to find a way of combining these two files.
 
 Let's look at the column names to see if there are any common columns.
 ```{r look_cols}
@@ -48,7 +48,7 @@ length(unique(pred_data$Press.Association.ID.Number))
 length((unique(actual_data$ons_id)))
 ```
 
-We can see that although the two types of IDs do not match, there are the same number of unique IDs of both types, meaning that it should be possible to match them. Luckily, the `ge_2015_results.csv` file available on the [Github](https://github.com/MangoTheCat/rss-2018-hackathon), contains both types of ID and so we can use it for matching. You should **download** this file into your _data_ folder before continuing. Now we will upload this file, and look at the first few column names.
+We can see that although the two types of IDs do not match, there are the same number of unique IDs of both types, meaning that it should be possible to match them. Luckily, the `ge_2015_results.csv` file available on the [Github repository](https://github.com/MangoTheCat/rss-2018-hackathon), contains both types of ID and so we can use it for matching. You should **download** this file into your _data_ folder before continuing. Now we will upload this file, and look at the first few column names.
 
 ## Matching IDs
 
