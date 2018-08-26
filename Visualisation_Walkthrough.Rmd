@@ -14,7 +14,7 @@ cowplot::plot_grid(map2010, map2015)
 par(mar = (c(0, 0, 0, 0)))
 ```
 
-To be able to run this exact code, you will need your file structure set up with a _data_ folder inside your working directory. _analysis_ and _output_ folders are also recommended to keep your files tidy, but you can follow this walkthrough without. The data you will need can be found on the Github repository for this [Hackathon](https://github.com/MangoTheCat/rss-2018-hackathon). Before starting this walkthrough **download** `ge_2010_results.csv` into your _data_ folder.
+To be able to run this exact code, you will need your file structure set up with a _data_ folder inside your working directory. _Analysis_ and _output_ folders are also recommended to keep your files tidy, but you can follow this walkthrough without. The data you will need can be found on the [GitHub repository](https://github.com/MangoTheCat/rss-2018-hackathon). Before starting this walkthrough **download** `ge_2010_results.csv` into your _data_ folder.
 
 Firstly, we load all the packages that we will need, installing them first if necessary. 
 ```{r setup, message = FALSE, warning = FALSE}
@@ -25,14 +25,14 @@ library(dplyr)
 ```
 
 ## Sorting the Data
-The next step is to import the election data that we will be using and assign it to an object. This is the `ge_2010_results.csv` file that should now be in your _data_ folder. We will then investigate the resulting dataframe so we know what we're dealing with. 
+The next step is to import the election data that we will be using and assign it to an object. The data we are using is in `ge_2010_results.csv` which should now be in your _data_ folder. We are then going to explore the resulting dataframe so that we know what we are dealing with. 
 
 ```{r import_table, cache = TRUE}
 results_2010 <- read.csv("data/ge_2010_results.csv")
 dim(results_2010)
 ```
 
-This table has `r dim(results_2010)[1]` rows and `r dim(results_2010)[2]` columns, so we will not inspect the whole table or even the top few full rows. Instead let's look at the first 6 rows of the first 9 and last columns to get an idea of what is in the dataframe.
+This table has 650 rows and 144 columns, so we won't be inspecting the whole table or even the top few full rows. Instead, let's look at the first 6 rows of the first 9 and last columns to get an idea of what is in the dataframe.
 
 ```{r table_head_code, eval = FALSE}
 head(results_2010[, c(1:9, 144)])
@@ -42,14 +42,14 @@ head(results_2010[, c(1:9, 144)])
 knitr::kable(head(results_2010[, c(1:9, 144)]))
 ```
 
-From this we can see that the first 6 columns are constituency information and all columns from then on are the number of votes for each party. For simplicity, in this walkthrough we will focus on the results in Wales only, and so we need to filter the full results to just give us the Welsh entries. 
+From this we can see that the first 6 columns contain constituency information and all other columns contain the number of votes  attained by each party. For simplicity, in this walkthrough we will focus on the results for Wales only, and so we need to filter the dataframe to just give us the Welsh entries. 
 
 ```{r select_wales, cache = TRUE, warning = FALSE}
 wales_results_2010 <- filter(results_2010, Region == "Wales")
 dim(wales_results_2010)
 ```
 
-We can see this has worked by checking that the dataframe dimensions have changed. Now we are going to simplify the dataframe as much as possible by deleting any columns that we do not need for this evaluation, including parties with no votes in any Welsh constituencies, as well as some of the general information columns.
+We can check this has worked by looking at the change in dataframe dimensions. Now, we are going to simplify the dataframe as much as possible by deleting any columns that we do not need for this evaluation - including parties with no votes in any Welsh constituencies, as well as some of the general information columns.
 
 ```{r clear_cols, cache = TRUE}
 wales_results_2010 <- 
@@ -59,11 +59,11 @@ wales_results_2010 <-
 dim(wales_results_2010)
 ```
 
-Now we have a much more manageable dataframe, with `r dim(wales_results_2010)[1]` rows and `r dim(wales_results_2010)[2]` columns.
+Now we have a much more manageable dataframe, with 40 rows and 20 columns.
 
 ## Processing the Data
 ### Finding the Winning Party
-Next, we need to work out which party won in each constituency, which is done by finding the name of the column with the highest number of votes in each row. Here a vector of the winning party names is created, then added as an extra column to our simplified Wales dataframe. Again we check the dimensions have changed as expected.
+Next, we need to work out which party won in each constituency, which is done by finding the name of the column with the highest number of votes in each row. Here, a vector of the winning party names is created, then added as an extra column to our simplified Wales dataframe. Again we check the dimensions have changed as expected.
 
 ```{r winners, cache = TRUE}
 winners <- colnames(wales_results_2010)[max.col(wales_results_2010[, 3:20])+2]
@@ -106,7 +106,7 @@ Now we want to use this reference frame to add the correct colour to each consti
 wales_results_2010 <- merge(wales_results_2010, colour_reference, all.x = TRUE)
 ```
 
-In order to map the colours, all we now need from the main dataframe are the constituency names and respective colours, so we extract these two columns into a new dataframe.
+In order to map the colours, all we need from the main dataframe are the constituency names and respective colours. We extract these two columns into a new dataframe.
 
 ```{r colour_table_code, eval = FALSE}
 wales_colours_2010 <- select(wales_results_2010, Name = "Constituency.Name", "Colour")
@@ -120,7 +120,7 @@ knitr::kable(head(wales_colours_2010), row.names = FALSE)
 ```
 
 ## Geospatial Data
-Now that we've dealt with the election data, we need to create a map that we can put these colours onto. To do this we need to be able to map the borders of the constituencies. This requires a new set of data *'Wales_Constiuencies'*, which can be found on the Github page for this [Hackathon](https://github.com/MangoTheCat/rss-2018-hackathon). This shapefile file should be **saved** into your _data_ folder and **unzipped** before continuing. We will then read this data and save it as an object, before extracting the information we need into a dataframe by using `fortify`. 
+Now that we've dealt with the election data, we need to create a map that we can put these colours onto. To do this we need to be able to map the borders of the constituencies. This requires a new set of data *'Wales_Constiuencies'*, which can be found on the [Github repository](https://github.com/MangoTheCat/rss-2018-hackathon). This _shapefile_ should be **saved** into your _data_ folder and **unzipped** before continuing. We will then read this data and save it as an object, before extracting the information we need into a dataframe using `fortify`. 
 
 ```{r geo_data, cache = TRUE, message = FALSE, results = 'hide'}
 data <- readOGR(dsn = "data/Wales_Constituencies", layer = "Wales_Constituencies")
@@ -136,7 +136,7 @@ unique(borders$id)[1:5]
 ```
 
 ### Getting the Names
-We can see that there is no name column, but since there are `r length(unique(borders$id))` `id` values, these must correspond to the constituencies. We need the constituency names, so let's look into the original geospatial `data` object.
+We can see that there is no name column, but since there are 40 `id` values, these must correspond to the constituencies. We need the constituency names, so let's look into the original geospatial `data` object.
 
 ```{r borders_names_code, eval = FALSE}
 head(structure(data@data))
@@ -146,7 +146,7 @@ head(structure(data@data))
 knitr::kable(head(structure(data@data)), row.names = FALSE)
 ```
 
-This tells us that our constituency names are present in this data in the `nawc15nm` column, but these names are not in alphabetical order, so we need to take this into account. Also note that the `id` column of the `borders` dataframe starts at 0, and the `objectid` column in `data` starts from 1. So that we can eventually merge these dataframes to give names to `borders` we have to change the `objectid` column to match `id`. As we do not need any other information from the `data` we will make a new dataframe.
+This tells us that our constituency names are present in this data in the `nawc15nm` column, but these names are not in alphabetical order, so we need to take this into account. Also note that the `id` column of the `borders` dataframe starts at 0, and the `objectid` column in `data` starts from 1. In order to eventually merge these dataframes to give names to `borders`, we have to change the `objectid` column to match `id`. As we do not need any other information from the `data`, we will make a new dataframe.
 
 ```{r adjust_ids, cache = TRUE}
 name_id <- data.frame(Name = as.character(data$nawc15nm), id = 0:39)
@@ -201,13 +201,13 @@ ggmap(sat_map) +
 ## Extensions
 Now that you have followed this walkthrough to get you going, try any (or all) of the following ideas for yourself:
 
-* Repeat a similar method for the `ge_2015_results.csv` data set on the [Github](https://github.com/MangoTheCat/rss-2018-hackathon) repository. 
+* Repeat a similar method for the `ge_2015_results.csv` data set on the [GitHub repository](https://github.com/MangoTheCat/rss-2018-hackathon) repository. 
 
-* Repeat a similar process for the Scotland/England data, or for the whole of Great Britain. You will need the relevant geospatial data folders, also on the Github.
+* Repeat a similar process for the Scotland/England data, or for the whole of Great Britain. You will need the relevant geospatial data folders, also on the GitHub repository.
 
 * Repeat a similar method to map predicted results, as found in the _**Modelling Walkthrough**_, so that these can be visually compared to actual results.
 
-* Rewrite this process into functions so it can be reused on any year's or countries data.
+* Rewrite this process into functions so it can be reused on any year's or country's data.
 
 * Anything else you can think of, be creative!
 
