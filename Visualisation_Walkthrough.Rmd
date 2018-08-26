@@ -24,7 +24,8 @@ library(rgdal)
 library(dplyr)
 ```
 
-## Sorting the Data
+## Processing the Data
+### Importing and Exploring
 The next step is to import the election data that we will be using and assign it to an object. The data we are using is in `ge_2010_results.csv` which should now be in your _data_ folder. We are then going to explore the resulting dataframe so that we know what we are dealing with. 
 
 ```{r import_table, cache = TRUE}
@@ -61,7 +62,6 @@ dim(wales_results_2010)
 
 Now we have a much more manageable dataframe, with 40 rows and 20 columns.
 
-## Processing the Data
 ### Finding the Winning Party
 Next, we need to work out which party won in each constituency, which is done by finding the name of the column with the highest number of votes in each row. Here, a vector of the winning party names is created, then added as an extra column to our simplified Wales dataframe. Again we check the dimensions have changed as expected.
 
