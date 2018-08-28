@@ -1,8 +1,14 @@
 # Python
 *.pyc
-.ipynb_checkpoints/*.ipynb
+**/.ipynb_checkpoints/*.ipynb
 
 # Data
 data/**/*.csv
 data/**/*.json
+data/**/*.cpg
+data/**/*.dbf
+data/**/*.prj
+data/**/*.shx
+data/**/*.shp
+data/**/*.xml
 
