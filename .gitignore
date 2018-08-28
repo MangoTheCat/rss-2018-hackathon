@@ -1,0 +1,8 @@
+# Python
+*.pyc
+.ipynb_checkpoints/*.ipynb
+
+# Data
+data/**/*.csv
+data/**/*.json
+
