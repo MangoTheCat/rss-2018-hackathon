@@ -1,0 +1,214 @@
+---
+title: "Election Data Visualisation Walk Through"
+output:
+  html_document:
+    theme: yeti
+---
+## Introduction
+This walkthrough covers an example of data visualisation using election result data that is publicly available. The final result is a geographical map that shows the colour of the winning party in each constituency.
+
+```{r example_plots, cache = TRUE, echo = FALSE, out.width = 600, fig.align = 'center'}
+map2010 <-  grid::rasterGrob(as.raster(png::readPNG("output/2010map.png")))
+map2015 <-  grid::rasterGrob(as.raster(png::readPNG("output/2015map.png")))
+cowplot::plot_grid(map2010, map2015)
+par(mar = (c(0, 0, 0, 0)))
+```
+
+To be able to run this exact code, you will need your file structure set up with a _data_ folder inside your working directory. _Analysis_ and _output_ folders are also recommended to keep your files tidy, but you can follow this walkthrough without. The data you will need can be found on the [GitHub repository](https://github.com/MangoTheCat/rss-2018-hackathon). Before starting this walkthrough **download** `ge_2010_results.csv` into your _data_ folder.
+
+Firstly, we load all the packages that we will need, installing them first if necessary. 
+```{r setup, message = FALSE, warning = FALSE}
+library(ggplot2)
+library(ggmap)
+library(rgdal)
+library(dplyr)
+```
+
+## Processing the Data
+### Importing and Exploring
+The next step is to import the election data that we will be using and assign it to an object. The data we are using is in `ge_2010_results.csv` which should now be in your _data_ folder. We are then going to explore the resulting dataframe so that we know what we are dealing with. 
+
+```{r import_table, cache = TRUE}
+results_2010 <- read.csv("data/ge_2010_results.csv")
+dim(results_2010)
+```
+
+This table has 650 rows and 144 columns, so we won't be inspecting the whole table or even the top few full rows. Instead, let's look at the first 6 rows of the first 9 and last columns to get an idea of what is in the dataframe.
+
+```{r table_head_code, eval = FALSE}
+head(results_2010[, c(1:9, 144)])
+```
+
+```{r table_head_out, echo = FALSE, results = 'asis'}
+knitr::kable(head(results_2010[, c(1:9, 144)]))
+```
+
+From this we can see that the first 6 columns contain constituency information and all other columns contain the number of votes  attained by each party. For simplicity, in this walkthrough we will focus on the results for Wales only, and so we need to filter the dataframe to just give us the Welsh entries. 
+
+```{r select_wales, cache = TRUE, warning = FALSE}
+wales_results_2010 <- filter(results_2010, Region == "Wales")
+dim(wales_results_2010)
+```
+
+We can check this has worked by looking at the change in dataframe dimensions. Now, we are going to simplify the dataframe as much as possible by deleting any columns that we do not need for this evaluation - including parties with no votes in any Welsh constituencies, as well as some of the general information columns.
+
+```{r clear_cols, cache = TRUE}
+wales_results_2010 <- 
+  wales_results_2010[,  c(-1, -4, -5, -6)]
+wales_results_2010 <- 
+  wales_results_2010[,  colSums(wales_results_2010 != 0) > 0]
+dim(wales_results_2010)
+```
+
+Now we have a much more manageable dataframe, with 40 rows and 20 columns.
+
+### Finding the Winning Party
+Next, we need to work out which party won in each constituency, which is done by finding the name of the column with the highest number of votes in each row. Here, a vector of the winning party names is created, then added as an extra column to our simplified Wales dataframe. Again we check the dimensions have changed as expected.
+
+```{r winners, cache = TRUE}
+winners <- colnames(wales_results_2010)[max.col(wales_results_2010[, 3:20])+2]
+wales_results_2010 <- mutate(wales_results_2010, Winning = winners)
+dim(wales_results_2010)
+```
+
+### Assigning a Colour
+In order to show this data on a map, we need to assign a colour to each winning party. To begin with we will look at the names of the winning parties in this data. 
+
+```{r unique_winners, cache = TRUE}
+all_parties <- unique(wales_results_2010$Winning)
+print(all_parties)
+```
+
+From this we can see that there were only 4 winning parties in Wales, and so we can easily assign each of these their appropriate colour by hand and create a reference table. However, we will also include code that would show any other parties as pink, which could be useful if mapping a larger area with more parties (such as the whole UK).
+
+```{r colour_reference, cache = TRUE}
+main_parties <- c("Lab", "Con", "PC", "LD")
+other_parties <- setdiff(all_parties, main_parties)
+
+main_colours <- c("red", "blue", "green", "orange")
+
+colour_reference <- data.frame(Winning = c(main_parties, other_parties),
+                               Colour = c(main_colours, rep("pink", length(other_parties))))
+```
+
+Let's look at this reference table to check it is as expected:
+```{r colour_ref_code, eval = FALSE}
+colour_reference
+```
+
+```{r colour_ref_out, echo = FALSE, results = 'asis'}
+knitr::kable(colour_reference)
+```
+
+Now we want to use this reference frame to add the correct colour to each constituency in the main dataframe. We can do this by merging the two dataframes. 
+
+```{r colour_merge, cache = TRUE}
+wales_results_2010 <- merge(wales_results_2010, colour_reference, all.x = TRUE)
+```
+
+In order to map the colours, all we need from the main dataframe are the constituency names and respective colours. We extract these two columns into a new dataframe.
+
+```{r colour_table_code, eval = FALSE}
+wales_colours_2010 <- select(wales_results_2010, Name = "Constituency.Name", "Colour")
+head(wales_colours_2010)
+```
+
+```{r colour_table_print, cache = TRUE, echo = FALSE, results = 'asis'}
+wales_colours_2010 <- select(wales_results_2010, Name = "Constituency.Name", "Colour")
+wales_colours_2010 <- wales_colours_2010[order(wales_colours_2010$Name), ]
+knitr::kable(head(wales_colours_2010), row.names = FALSE)
+```
+
+## Geospatial Data
+Now that we've dealt with the election data, we need to create a map that we can put these colours onto. To do this we need to be able to map the borders of the constituencies. This requires a new set of data *'Wales_Constiuencies'*, which can be found on the [Github repository](https://github.com/MangoTheCat/rss-2018-hackathon). This _shapefile_ should be **saved** into your _data_ folder and **unzipped** before continuing. We will then read this data and save it as an object, before extracting the information we need into a dataframe using `fortify`. 
+
+```{r geo_data, cache = TRUE, message = FALSE, results = 'hide'}
+data <- readOGR(dsn = "data/Wales_Constituencies", layer = "Wales_Constituencies")
+borders <- fortify(data)
+```
+
+Let's take a look at some features of this `borders` dataframe before continuing.
+```{r borders, results = 'hold'}
+dim(borders)
+colnames(borders)
+length(unique(borders$id))
+unique(borders$id)[1:5]
+```
+
+### Getting the Names
+We can see that there is no name column, but since there are 40 `id` values, these must correspond to the constituencies. We need the constituency names, so let's look into the original geospatial `data` object.
+
+```{r borders_names_code, eval = FALSE}
+head(structure(data@data))
+```
+
+```{r borders_names_output, echo = FALSE, result = 'asis'}
+knitr::kable(head(structure(data@data)), row.names = FALSE)
+```
+
+This tells us that our constituency names are present in this data in the `nawc15nm` column, but these names are not in alphabetical order, so we need to take this into account. Also note that the `id` column of the `borders` dataframe starts at 0, and the `objectid` column in `data` starts from 1. In order to eventually merge these dataframes to give names to `borders`, we have to change the `objectid` column to match `id`. As we do not need any other information from the `data`, we will make a new dataframe.
+
+```{r adjust_ids, cache = TRUE}
+name_id <- data.frame(Name = as.character(data$nawc15nm), id = 0:39)
+```
+
+### Matching Data
+Before we merge with `borders`, we need to check that the names from `data` and `wales_colours_2010` match. 
+
+```{r check_names}
+setdiff(name_id$Name, wales_colours_2010$Name)
+setdiff(wales_colours_2010$Name, name_id$Name)
+```
+
+We can see that there are some discrepancies, and these are because the geospatial data uses `and` instead of `&`, and also has `South Pembrokeshire` instead of `Pembrokeshire South`. We will now change this to match the original election data.
+
+```{r fix_names, cache = TRUE}
+name_id$Name <- gsub("and", "&", name_id$Name)
+name_id$Name <- gsub("South Pembrokeshire", "Pembrokeshire South", name_id$Name)
+```
+
+We now have matching `id` columns in `name_id` and `borders`, and matching `Name` columns in `name_id` and `wales_colours_2010`. This means that we can merge `name_id` and `borders` on their `id`, and then merge the resulting dataframe with `wales_colours_2010. After reordering this dataframe, this will give a dataframe with both the geospatial data and colour data we need to finally plot. 
+
+```{r merges, cache = TRUE}
+borders_named <- merge(borders, name_id)
+borders_coloured <- merge(wales_colours_2010, borders_named)
+borders_coloured <- borders_coloured[order(borders_coloured$group, borders_coloured$order), ]
+```
+
+## Plotting the Map
+
+For the base layer of our map, we will use a satellite image of Wales, from `ggmap`. The latitude and longitude are for the centre of Wales, and the zoom is set (by trial and error) to show the whole of Wales.
+
+```{r sat_map, cache = TRUE, message = FALSE}
+sat_map <- get_map(location = c(lon = -3.78, lat = 52.40), zoom = 8,
+        scale = "auto", maptype = "satellite", source = "google")
+```
+
+Finally, we plot our borders in white as a layer over the satellite map, and set the fill colour to be the winning party colour.
+
+```{r sec_name_plot, cache = TRUE, out.width = 1200, fig.align = "center"}
+ggmap(sat_map) + 
+    geom_polygon(aes(x = long, y = lat, group = group), data = borders_coloured,
+                 colour = "white", fill = borders_coloured$Colour, alpha = .4, size = .3) +
+    ggtitle("2010 General Election Results in Wales") +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank(),
+          axis.text.x = element_blank(), axis.text.y = element_blank(),
+          axis.ticks.x = element_blank(), axis.ticks.y = element_blank())
+
+```
+
+
+## Extensions
+Now that you have followed this walkthrough to get you going, try any (or all) of the following ideas for yourself:
+
+* Repeat a similar method for the `ge_2015_results.csv` data set on the [GitHub repository](https://github.com/MangoTheCat/rss-2018-hackathon) repository. 
+
+* Repeat a similar process for the Scotland/England data, or for the whole of Great Britain. You will need the relevant geospatial data folders, also on the GitHub repository.
+
+* Repeat a similar method to map predicted results, as found in the _**Modelling Walkthrough**_, so that these can be visually compared to actual results.
+
+* Rewrite this process into functions so it can be reused on any year's or country's data.
+
+* Anything else you can think of, be creative!
+
+**Good Luck**
