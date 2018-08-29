@@ -1,0 +1,239 @@
+---
+title: "Data-Pre-processing-Walkthrough-Geographic-IDs"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+Our larger goal in the [Election Data Visualisation Walkthrough](Election-Data-Visualisation-Walkthrough.Rmd) notebook is plotting the results of the 2010 and 2015 General Elections as different colours on a map of Wales. However to do so we needed to do some pre-processing and manipulation to combine several datasets and align ID values for the geographic regions. This is what we step though in this notebook. 
+
+Before starting this walkthrough, make sure you followed the setup instruction in the [README.md](https://github.com/MangoTheCat/rss-2018-hackathon/blob/master/README.md) and download and extracted all the datasets into your data folder.
+
+## Election Results Data
+
+OK, lets begin with looking at our General Election results for Wales. We'll use the **readr** library to read the csv for the results from 2015.
+
+```{r}
+library(readr)
+ge2015 <- read_csv('../../data/election/ge_2015_results.csv')
+dim(ge2015)
+```
+```{r}
+head(ge2015)
+```
+
+And just subset to keep those related to Wales.
+
+```{r}
+wales_ge2015 <- ge2015[ge2015$Region == "Wales", ]
+```
+
+So we can see we have two ID numbers here, `Press Association ID Number`, and `Constituency ID`. 
+
+## Geographical Border Data
+
+Next we look at boundary data file for Wales, which are available from the [ONS Open Geography Portal here](http://geoportal.statistics.gov.uk/datasets/national-assembly-for-wales-constituencies-december-2015-super-generalised-clipped-boundaries-in-wales). We are concerned mostly with the shapefile that is included in the data folder in the repo at `data/geographic/Wales-Constituency-boundaries`. 
+
+Let's read this shapefile data using the **rgdal** package.
+
+```{r}
+library(rgdal)
+filepath <- "../../data/geographic/Wales-Constituency-boundaries/National_Assembly_for_Wales_Constituencies_December_2015_Super_Generalised_Clipped_Boundaries_in_Wales"
+shape_data <- readOGR(dsn = dirname(filepath), layer = basename(filepath))
+```
+
+We can see that the resulting object returned is an S4 class with two main components, a dataframe under `data` and a nested list under `polygons`.
+
+```{r}
+dim(shape_data@data)
+```
+
+```{r}
+head(shape_data@data)
+```
+
+## Data Merging
+
+We now have a very similar looking ID associated with the border geormetry data in the `nawc15cd` column, unfortunately these do not match up. 
+
+```{r}
+length(setdiff(shape_data@data$nawc15nm, wales_ge2015$Constituency.Name))
+```
+
+So could we use the names instead?
+
+```{r}
+setdiff(wales_ge2015$`Constituency Name` , shape_data@data$nawc15nm)
+```
+
+```{r}
+setdiff(shape_data@data$nawc15nm, wales_ge2015$`Constituency Name`)
+```
+
+Well that's annoying! We can see that there are some discrepancies, and these are because the geospatial data uses 'and' instead of '&', and also names constituencies as 'South Pembrokeshire' vs 'Pembrokeshire South'. As there are only a handful we could manually clean these up to match each other, but that could get tedious fast if we want to do this with larger regions.
+
+So lets try and use these ID's somehow.
+
+## ONS Geographic ID's
+
+The ID's used are provided by the ONS and follow a standard naming policy (e.g. codes beginning with `W` relate to Wales). However the various geographical boundaries and the hierarchies that make up the UK are far from straight forward, and to add further complication, these can also change over time, as new boundaries get agreed. The end result is many codes, which may or may not map to the same region over time and at different levels. Great!
+
+If you wish to know more about how geographical regions in the UK are organised the ONS have a whole book on the subject at [this address](https://www.arcgis.com/sharing/rest/content/items/41381f11374d4e909f24dcb215f3d837/data) 
+
+So back to our problem. Our goal is to find, a mapping between  the `nawc15cd` column in the shapefile data and the 
+`Constituency ID` in the wales GE results data set, however we have found these codes don't match, though they are both valid ONS codes, just for different definitions of the save region. 
+
+Fortunately the ONS have a [Code History Database](https://ons.maps.arcgis.com/home/item.html?id=a6a1247a7d8e45068011e8f482cdf3c5) to store all these ONS geographic codes, which we will use to try and match our shapefile IDs to our General Election results. A copy of the database is included in the repo under `data/chd`. the main file we are interested in in there is the `Equivalents.csv` file. 
+
+```{r}
+code_lookup = read_csv('../../data/chd/Equivalents.csv')
+```
+
+```{r}
+head(code_lookup)
+```
+
+From looking into the supporting documents that came with the database we find that the two most usefull columns for us are:
+    
+* `GEOGCD` - The ONS code for the region.
+* `GEOGNM` - The ONS name for the region.
+
+We will keep data for just this mapping, and drop the other rows/columns, and save the result to file for reference. 
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+code_lookup %>% 
+  select(GEOGCD, GEOGNM) %>% 
+  drop_na() %>% 
+  distinct() %>% 
+  write_csv('../../data/ONS_geographic_code_lookup_R.csv') -> code_lookup
+```
+
+```{r}
+head(code_lookup)
+```
+
+## Merging based on Names
+
+We saw before that the names were inconsistent, however they appear to be much more standard in the CHD, so our strategy is going to be to map each ONS code to a CHD name, and then merge based on these CHD names. 
+
+### Geographic Borders Data
+
+```{r}
+borders_CHD <- left_join(shape_data@data, code_lookup, by=c("nawc15cd"="GEOGCD"))
+```
+
+```{r}
+dim(borders_CHD)
+```
+
+So it looks like we have one new region that's been added. 
+
+```{r}
+tail(borders_CHD)
+```
+
+This is due to there being one inconsistency with `The Vale of Glamorgan` vs `Vale of Glamorgan`. Not perfect, but having both in this table will be enough for our needs going forward. We clean up the merge by dropping repeated data columns. 
+
+```{r}
+borders_CHD <- rename(borders_CHD, CHD_Name = GEOGNM) 
+
+dim(borders_CHD)
+```
+
+
+### General Election Results
+
+Good start, now lets do the same with the General election results data. 
+
+```{r}
+# Keep just the first 8 columns as these relate to regional information
+wales_ge2015 <- wales_ge2015[, c(1:8)]
+dim(wales_ge2015)
+```
+
+```{r}
+wales_ge2015_CDH <- left_join(wales_ge2015, code_lookup, by=c("Constituency ID"="GEOGCD"))
+dim(wales_ge2015_CDH)
+```
+```{r}
+head(wales_ge2015_CDH)
+```
+
+```{r}
+tail(wales_ge2015_CDH)
+```
+
+Again we have the issue of the with `The Vale of Glamorgan` vs `Vale of Glamorgan`, but we have matched on both, and both might be needed downstream, so lets leave then for now. 
+
+```{r}
+wales_ge2015_CDH <- rename(wales_ge2015_CDH, CHD_Name = GEOGNM)
+
+dim(wales_ge2015_CDH)
+```
+
+```{r}
+wales_ge2015_CDH %>% 
+  drop_na() %>%
+  dim()
+```
+
+### Final Merged Dataset
+
+Now we are ready to check these names in `GEOGNM` can be used to match our shapefiles to the Press Association Number.
+
+```{r}
+wales_region_data = left_join(borders_CHD, wales_ge2015_CDH, by="CHD_Name")
+wales_region_data
+```
+
+```{r}
+dim(wales_region_data)
+```
+
+```{r}
+wales_region_data %>% 
+  drop_na() %>% 
+  dim()
+```
+
+Nice this has worked. Now what's left is to cleanup the columns in the resulting dataset, as there is quite a bit of duplication, and then save the result for reference later. 
+
+The key bits of information we want to keep are:
+    
+* `nawc15cd` code from the shapefile
+* `Press Association ID` from the published general election results
+* `Constituency ID` based on the ONS code column `GEOGCD`
+* `Constituency Name` based on ONS name column `GEOGNM`
+
+```{r}
+wales_region_data %>% 
+  select(nawc15cd, `Press Association ID Number`, `Constituency ID`, CHD_Name) %>% 
+  arrange(CHD_Name) -> wales_region_data
+
+head(wales_region_data)
+```
+
+Now we are ready to save the region data for future use in downstream analysis. 
+
+```{r}
+write_csv(wales_region_data, '../../data/geographic/wales_region_data_R.csv')
+wales_region_data
+```
+
+# Extensions
+
+Now that you have followed this walkthrough to get you going, try any (or all) of the following ideas for yourself:
+
+* Repeat a similar process for the Scotland/England data, or for the whole of Great Britain. You will need the relevant geospatial data from the [ONS geographic portal](http://geoportal.statistics.gov.uk). 
+* Search for other data sources that may be useful to include for downstream visualisation or prediction of the general election, such as:
+    * Amount of party spending per constituency.
+    * Length of time the MP has represented the constituency. 
+    * Anything else you can think of, be creative!
+
+**Good Luck and Have Fun!**
+
