@@ -1,6 +1,12 @@
+# Mac OS
+.DS_Store
+
 # Python
 *.pyc
 **/.ipynb_checkpoints/*.ipynb
+
+# R
+.Rhistory
 
 # Data
 data/**/*.csv
