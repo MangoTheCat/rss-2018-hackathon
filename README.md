@@ -37,7 +37,55 @@ In addition, both of these tasks will require an amount of data prep and manipul
 
 # Task Details
 
-TODO
+## General Election Predictions
+
+Two data sets are provided under `data/election`:
+
+* `ge_2010_2015_training_data.csv` - Based on **2010 to 2015 General Election** plus polling data 3 days before election. 
+* `ge_2015_2017_prediction_data.csv` - Based on **2015 to 2017 General Election** plus polling Data 3 days before election.
+
+The task is to train a model on the first and use it to predict on the second. Full descriptions of the data fields are found under `data/Data-Description.md`.
+
+The columns marked as missing, can be filled in by following the `Data-Pre-processing-Walkthrough-Election-Results` walkthrough in the examples. 
+
+A basic model can be fit in by following the `Modeling-Walkthrough` in the examples. 
+
+### Extension Ideas
+
+* Look into Feature engineering and selection. 
+    * Removing highly correlated variables?
+    * Adding regional information?
+    * Creating new features from the data?
+    * You can add more data from other sources and build a completely different model
+
+* Model Interpretation and Improvement
+    * What constituencies/parties were predicted the best and worst?
+    * Do other modelling approaches improve prediction?
+    * How does your result compare to other forecasts for the election result?
+
+* Anything else you can think of, be creative!
+
+
+## General Election Result Visualisations
+
+The `Election-Result-Visualisation-Walkthrough` goes through plotting the result of the 2010 election on a map of Wales, and shading the constituencies according to the party that won.
+
+
+### Extension Ideas 
+
+* Repeat with different regions and data sets:
+    * Results for 2010 vs 2015 vs 2017
+    * Scotland, England or all of UK
+
+* Have a go at visualising the ['swing'](https://en.wikipedia.org/wiki/Swing_(United_Kingdom)) between different political parties.
+
+* Add interactivity to th R example using the [mapview](https://github.com/r-spatial/mapview). See if you can overlay different years of results as layers on the map. 
+
+* Add the prediction results from the modelling task and visualise them.
+
+* Source other data sets and visualise how these vary by constituency. 
+
+* Anything else you can think of, be creative!
 
 
 # Collating Results
@@ -49,5 +97,6 @@ Results will be collated via a collaboratively edited google document as we go. 
 
 The following references may be useful to augment the analysis and visualisation tasks:
 
-* [GE2017 Tech Initiatives Handbook](http://bit.ly/GE2017TechHandbook): – Collection of resources, datasets, volunteers, existing projects, proposed projects. Initiated by Newspeak House.
+* [GE 2017 Datasets](http://bit.ly/UKPoliticsDatasets): – a crowdsourced collection of all kinds of relevant datasets.
+
 
