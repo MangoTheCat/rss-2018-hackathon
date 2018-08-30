@@ -1,0 +1,122 @@
+---
+title: "Modeling Walkthrough - Predicting the Proportion of Votes "
+output: 
+  html_document:
+    theme: yeti
+---
+## Introduction
+
+In this notebook, we are going to predict the proportion of votes attained by each party in each constituency. We will be incorporating a few more features into our model fit and using some data that has been preprocessed and can be found in the data folder of the Github repository. This type of prediction requires regression and as such we are going to use a Linear Model.
+
+First, we load a couple of packages.  We are going to use `dplyr` to manipulate our data, `GGally` to visualise our data and then fit a `caret` model to come up with some predictions.
+
+
+```{r setup, message = FALSE, warning = FALSE, results = 'hide'}
+library(dplyr)
+library(tidyr)
+library(caret)
+library(GGally)
+```
+
+
+## Importing and Exploring
+
+We import our model ready data and have a look at what we are dealing with.
+
+```{r import_data}
+df <- read.csv("../../data/ge_2010_2015_training_data.csv")
+head(df, n = 15L)
+colnames(df)
+```
+
+From this we can see that for each constituency we have five rows defined by the *party* that is being represented.  For example, in the constituency of Aberavon the Conservatives obtained 4411 votes (column *votes_last*) in the 2010 general election. This was 14% of the total number of votes (column *pc_last*) in that constituency. We also see that Labour won the seat in the 2010 general election (column *win_last* and translated to a 0/1 column in *won_here_last*) and won it again in the 2015 general election (column *actual_win_now*). They did so by a vote share of 49% (column *actual_pc_now*). The dataset also includes average vote share figures based on national polling data. So for the 2015 general election polls suggested the Conservatives would get a 33% vote share on a national level.
+
+## Swing or no Swing?
+
+The [Uniform National Swing](https://en.wikipedia.org/wiki/Uniform_national_swing) (UNS) is a commonly used method to predict election outcomes. It uses national polling data and the previous election results to calculate a proportional change in vote share (swing) which is then applied to the constituency level vote share. The above dataset already includes these calculations: column *swing_now* is the proportional change in vote share on a national level,  column *swing_forecast_pc* is the prediction for the constituency level vote share and based on that column *swing_forecast_win* is a prediction of who will win the seat.      
+
+Note that UNS assumes that the data for each party in each constituency is independent of each other. Nevertheless it still produces a reasonably accurate result as we will see now. We do this by comparing *swing_forecast_win* with *actual_win_now* to get an aggregate view of the accuracy and *swing_forecast_pc* with *actual_pc_now* to get average error per seat.
+
+```{r swing_prediction_results, warning=FALSE, message=FALSE}
+df %>% 
+  select(Constituency.Name, win_last, swing_forecast_win, actual_win_now) %>% 
+  # we want one row per constituancy as we are only interested in which party wins
+  distinct(Constituency.Name, .keep_all = TRUE) %>% 
+  # now we transpose the data to have a row for each prediction category 
+  # this makes it easier to plot
+  gather(key="Type", value="Party", win_last, swing_forecast_win, actual_win_now) %>% 
+  mutate(Party = tolower(Party)) -> plot_data
+
+ggplot(plot_data, aes(x=Party, fill=Type)) +
+  geom_bar(position="dodge")
+```
+
+Next, we calculate the difference in proportion of votes actually attained and the proportion stated in *swing_forecast_pc*.
+
+``` {r seat_error}
+# Total average error per party per seat
+df %>% 
+  mutate(abs_error = abs(actual_pc_now - swing_forecast_pc)) %>% 
+  pull(abs_error) %>% 
+  mean()
+```
+
+So the prediction through UNS is not that bad but there is still room for improvement. And we can improve by adding more features to the model, which we will do next.
+
+## Adding features
+
+Now, we are going to use `ggplot2` to visualise the relationships between some of our features. Using this, we can see how useful they are going to be to our model.
+
+``` {r pairplot, message = FALSE, warning = FALSE, out.width="1000px", out.height="1000px"}
+feature_cols <- c('Electorate', 'Votes', 'votes_last', 'pc_last', 'polls_now', 'swing_now', 'swing_forecast_pc', 'actual_pc_now')
+
+ggpairs(df, columns = feature_cols, aes(colour = party), 
+        upper = list(continuous = wrap("cor", size = 1, hjust=0.15, alignPercent=1)))
+```
+
+Our target variable is *actual_pc_now*, the vote share for the 2015 general election. Looking at which variables correlate highly with it we see that *votes_last* and *pc_last* are good candidates. As is *swing_forecast_pc* but that should not come as a surprise given the results from the previous section. The columns *votes_last* and *pc_last* are also highly correlated with eachother, as are the columns *Electorate* and *Votes*.
+
+We can use the above results to enhance the UNS model in the next section.
+
+## Fitting our Model
+
+In this section we are going to fit our model and calculate how accurate our model fit is by using Cross Validation.
+
+We apply [K-Fold Cross Validation](https://en.wikipedia.org/wiki/Cross-validation_(statistics)#k-fold_cross-validation) which means that we take our data set and do the following:
+
+* Split it into K parts
+* Train our model on K-1 of those parts
+* Test our model on the last part
+* Calculate the accuracy on the last part
+
+We repeat these steps a few times and average our error.
+
+``` {r cross_validation, warning = FALSE, message = FALSE}
+set.seed(30082018)
+
+train_control <- trainControl(method="repeatedcv", number=5, repeats=5)
+
+features <- c('Electorate', 'Votes', 'party', 'votes_last', 'pc_last', 'win_last', 'polls_now', 'swing_now', 'swing_forecast_pc')
+
+party_model <- train(actual_pc_now ~ . , data = df[, c(features, 'actual_pc_now')], trControl = train_control, method = "lm" )
+
+# We choose to look at the Mean Absolute Error
+party_model$results$MAE
+```
+
+So our model produces an average error of 3.5% which is an improvement over the UNS model. Of course just throwing all variables into a model isn't very sophisticated nor does it produce a model that makes sense (e.g. there might be an issue with including highly correlated variables). How to overcome these hurdles and further improve the model is the topic of the next section.
+
+## Extensions
+
+Now that you have followed this walk-through to get you going, try any (or all) of the following ideas for yourself:
+
+- You can copy this Rmarkdown document and pick up where we left off by:
+    - Removing highly correlated variables
+    - Adding regional information
+    - Creating new features
+
+- You can add more data from other [sources](http://bit.ly/UKPoliticsDatasets) and build a completely different model
+- Anything else you can think of, be creative!
+
+**Good Luck and Have Fun!**
+
