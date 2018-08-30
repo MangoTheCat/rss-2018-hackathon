@@ -1,0 +1,131 @@
+---
+title: "Cleaning Data Walk Through"
+output:
+  html_document:
+    theme: yeti
+editor_options: 
+  chunk_output_type: console
+---
+## Introduction
+
+This walkthrough is an example of cleaning data, in this case to be used for modelling. Here, the training data for a model includes two columns of information that the test data does not, so these need to be added on from another source.
+
+Before starting this walk-through, make sure you followed the setup instructions in the [README.md](https://github.com/MangoTheCat/rss-2018-hackathon/blob/master/README.md) and download and extracted all the datasets into your folders.
+
+To begin with we will load the packages we need during this walkthrough. You may need to install them first.
+
+```{r libraries, message = FALSE, warning = FALSE}
+library(dplyr)
+```
+
+## Investigating the Data
+
+The data we are looking at is election data from the 2015 and 2017 general elections, where a model will be trained on 2015 results and tested on 2017 results. The data sets available to us are `ge_2015_2017_prediction_data.csv` and `ge_2017_results.csv`. We first load these files as dataframes.
+
+```{r load_data}
+pred_data <- read.csv("../../data/election/ge_2015_2017_prediction_data.csv")
+actual_data <- read.csv("../../data/election/ge_2017_results.csv")
+```
+
+The first file has everything that is needed for the model, except the name of the winning party and the percentage of the vote secured by that party. These can be found from the second file, and so we need to find a way of combining these two files.
+
+Let's look at the column names to see if there are any common columns.
+```{r look_cols}
+colnames(pred_data)
+colnames(actual_data)
+```
+
+From looking at these column names, we can see that both include a constituency name and some sort of ID. First we look at the constituency names to see if they match.
+
+```{r check_names}
+length(setdiff(unique(pred_data$Constituency.Name),
+               unique(actual_data$constituency_name)))
+```
+
+There are a **lot** of mismatches in the names, and fixing all the strings to match will be a lot of work, so let's look at the ID fields instead.
+
+```{r check_ids}
+head(unique(pred_data$Press.Association.ID.Number))
+head(unique(actual_data$ons_id))
+length(unique(pred_data$Press.Association.ID.Number))
+length((unique(actual_data$ons_id)))
+```
+
+We can see that although the two types of IDs do not match, there are the same number of unique IDs of both types, meaning that it should be possible to match them. 
+
+Luckily, the original `ge_2015_results.csv` file for the raw data contains both types of ID and so we can use it for matching.
+
+Next we will load this file, and look at the first few column names.
+
+## Matching IDs
+
+```{r load_matching}
+ID_match <- read.csv("../../data/election/ge_2015_results.csv")
+colnames(ID_match)[1:10]
+```
+
+We assume the `Press.Association.ID.Number` columns match, and if we look at `Constituency.ID` we can see it matches `ons_id`.
+
+```{r ons_id_check}
+length(setdiff(ID_match$Constituency.ID, actual_data$ons_id))
+```
+
+As we only need these two ID columns to give us a reference table, we delete all other columns and rename `Constituency.ID` to `ons_id`, so it can be merged later. We will then check the table is as expected.
+
+```{r reference_table}
+ID_match <- ID_match[, 1:2]
+colnames(ID_match)[2] <- "ons_id"
+head(ID_match)
+```
+
+Now that we have a reference table linking the two ID numbers together, we can merge this with the `actual_data` dataframe by the `ons_id` column, so that the `actual_data` contains `Press.Association.ID.Number`. We can then check that this extra column has indeed been added correctly by looking at column names and checking that every constituency now has a `Press.Association.ID.Number`.
+
+```{r merge_actual}
+actual_data <- dplyr::left_join(actual_data, ID_match, by="ons_id")
+colnames(actual_data)
+sum(is.na(actual_data$Press.Association.ID.Number))
+```
+
+## Selecting Useful Data
+
+We are now at the point where we have a matching ID column in our `pred_data` and `actual_data`, but as we do not need all the columns from `actual_data`, we are going to pick out and calculate what we need before merging. The data missing from the `pred_data` is the winning party and the percentage of valid votes that went to that party. The first is already present in the `actual_data` as `first_party`, but the second will have to be calculated using `valid_votes` and `majority`. This means we can select only these columns into a dataframe and calculate the percentage, then drop the columns used only for percentage calculations. We will also name the columns to match the column names used in the model. 
+
+```{r needed_data}
+need_actual_data <- dplyr::select(actual_data, 
+                                  "Press.Association.ID.Number",
+                                  "actual_win_now" = "first_party",
+                                  "valid_votes", 
+                                  "majority")
+
+need_actual_data$actual_pc_now <- need_actual_data$majority / need_actual_data$valid_votes
+
+need_actual_data <- dplyr::select(need_actual_data, 
+                                  "Press.Association.ID.Number",
+                                  "actual_win_now", 
+                                  "actual_pc_now")
+```
+
+Before continuing, let's check that this dataframe is exactly as we expect.
+
+```{r check_needed}
+dim(need_actual_data)
+head(need_actual_data)
+```
+
+## Merging the Dataframes
+
+Now that we have the extra data we need, and an ID column that matches to `pred_data`, we can merge the two to give our full data set.
+
+```{r final_merge}
+full_data <- dplyr::left_join(pred_data, need_actual_data, by = "Press.Association.ID.Number")
+dim(full_data)
+sum(is.na(full_data))
+```
+
+## Saving the File
+
+We can see that the merge worked - we have two extra columns, the same number of rows, and no NA values, showing us that we have lost no data during this process. As a final step we will save this dataframe as a new csv file.
+
+```{r save_file}
+write.csv(full_data, "../../data/election/ge_2015_2017_prediction_data_with_results.csv")
+```
