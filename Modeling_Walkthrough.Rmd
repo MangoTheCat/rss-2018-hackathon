@@ -1,0 +1,207 @@
+---
+title: "Modeling Walk Through"
+output:
+  html_document:
+    theme: yeti
+---
+ 
+## Introduction
+In this walkthrough, I am going to take you through the key steps involved with fitting a machine learning model and using it to make predictions. In this case we are going to be using the data from the 2010 general elections to predict which party will win in each constituency in the 2015 general elections. To keep it simple, we are going to use a Decision Tree Classifier.
+
+First, we load a couple of packages; `dplyr` and `caret`. We are going to use `dplyr` to manipulate our data and then fit a `caret` model to come up with some predictions. 
+
+```{r libraries, message = FALSE, warning = FALSE}
+library(dplyr)
+library(caret)
+```
+
+The first thing we have to do is import the data that we will be using to feed our model and try and find some of the summary characteristics of the data.
+
+```{r import_data, cache = TRUE, results = 'hide'}
+ge_10 <- read.csv("data/ge_2010_results.csv")
+ge_15 <- read.csv("data/ge_2015_results.csv")
+
+dim(ge_10)
+dim(ge_15)
+
+head(ge_10[ , 1:15], 2)
+head(ge_15[ , 1:15], 2)
+```
+
+```{r show_data, echo = FALSE}
+dim(ge_10)
+dim(ge_15)
+
+knitr::kable(head(ge_10[ , 1:15], 2))
+knitr::kable(head(ge_15[ , 1:15], 2))
+```
+
+From this, we can see that there are a lot of columns, which can be split into two;
+firstly we have the columns that give us generic information about the constituency and the votes and next we have a lot of columns specifying how the votes were split up over each party.
+
+## Feature Engineering
+
+According to Kaggle, the online platform for machine-learning competitions, good feature engineering is usually the defining characteristic of winning entries. As such, we are going to spend some time processing our data to come up with some features that efficiently summarise our data.
+
+There are members of the Labour party who are also members of the Labour Co-operative party. When we get to fitting the model, this could alter the fit and reduce the accuracy of our model. So we are going to merge the two columns in the 2015 data (there is no column for Labour Co-operative in the 2010 data).
+
+```{r combine_cols, cache = TRUE}
+ge_15$Lab <- ge_15$Lab + ge_15$Lab.Co.op
+ge_15 <- select(ge_15, -"Lab.Co.op")
+```
+
+There are a **lot** of columns in the dataframes containing our election data. In order to make feature selection easier, we are going to reduce the columns by keeping the general information and the main parties and then summing the votes from all of the other parties into a column which we will call *Other*. First we store the names of the main parties and the names of the columns with general information, and save these columns into a new dataframe.
+
+```{r main_parties_list, cache = TRUE}
+main_parties_10 <- c('Lab', 'Con', 'LD', 'Grn', 'UKIP', 'SNP', 'PC')
+main_parties_15 <- c('Lab', 'C', 'LD', 'Green', 'UKIP', 'SNP', 'PC')
+
+non_parties_10 <- c('Press.Association.Reference', 'Constituency.Name', 'Region', 
+                    'Election.Year', 'Electorate', 'Votes')
+non_parties_15 <- c('Press.Association.ID.Number', 'Constituency.ID',
+                    'Constituency.Name', 'Constituency.Type', 'County',
+                    'Region.ID','Region', 'Country', 'Election.Year',
+                    'Electorate', 'Valid.Votes')
+
+ge_10_main <- select(ge_10, c(non_parties_10, main_parties_10))
+ge_15_main <- select(ge_15, c(non_parties_15, main_parties_15))
+```
+
+We then select all the remaining columns - the other parties, and sum each row to give the total number of votes for 'Other' parties in each constituency. This sum is added as a column on our main party dataframe. 
+
+```{r main_parties_frame, cache = TRUE, results = 'hide'}
+ge_10_other <- select(ge_10, -c(non_parties_10, main_parties_10))
+ge_15_other <- select(ge_15, -c(non_parties_15, main_parties_15))
+
+ge_10_main$Other <- rowSums(ge_10_other)
+ge_15_main$Other <- rowSums(ge_15_other)
+
+head(ge_10_main, 3)
+head(ge_15_main, 3)
+```
+
+```{r main_parties_out, echo = FALSE}
+knitr::kable(head(ge_10_main, 3))
+knitr::kable(head(ge_15_main, 3))
+```
+
+Next we want to add some of the columns from the 2015 dataframe to the 2010 dataframe but first we must check to see if both dataframes are in the same order, which we will start with by seeing if there are any inconsistencies in the constituency names.
+
+```{r name_consistent}
+length(setdiff(ge_10_main$Constituency.Name, ge_15_main$Constituency.Name))
+```
+
+It seems that there are some inconsistencies between them, let's have a look at them to see how we can fix this. Let's check if these name inconsistencies are because of different formatting or they are actually different constituencies.
+
+```{r different_names, cache = TRUE, results = 'hide'}
+name_diff_10 <- ge_10_main[(as.character(ge_10_main$Constituency.Name) != as.character(ge_15_main$Constituency.Name)), "Constituency.Name"]
+name_diff_15 <- ge_15_main[(as.character(ge_15_main$Constituency.Name) != as.character(ge_10_main$Constituency.Name)), "Constituency.Name"]
+data.frame(name_diff_10, name_diff_15)
+```
+
+```{r different_names_out, echo = FALSE}
+knitr::kable(data.frame(name_diff_10, name_diff_15))
+```
+
+The inconsistencies are only because of different formatting. This means that each dataframe has the same indexing and so we can add columns from the 2015 dataframe to the 2010 dataframe! The columns to be added are some of the general information columns that appear in 2015 but not 2010 data, which we can do because the information will be the same over the years. We will also make the column names consistent.
+```{r add_columns, cache = TRUE}
+ge_10_main$Constituency.Type <- ge_15_main$Constituency.Type
+ge_10_main$Country <- ge_15_main$Country
+colnames(ge_15_main)[c(1, 11, 13, 15)] <- c("Press.Association.Reference",
+                                            "Votes", "Con", "Grn")
+
+```
+
+Next, we will add the proportion of votes the winning party received as a new column in both data sets. First select only the vote count columns, then find the highest value in each row.
+
+```{r find_max, cache = TRUE}
+votes_10 <- select(ge_10_main, c(main_parties_10, "Other"))
+votes_15 <- select(ge_15_main, c(main_parties_10, "Other"))
+
+max_votes_10 <- apply(votes_10, 1, max)
+max_votes_15 <- apply(votes_15, 1, max)
+```
+
+Now we can calculate the winning vote proportion and add the column to our main dataframes, and then check the dataframes.
+
+```{r add_prop, cache = TRUE, results = 'hide'}
+ge_10_main$Highest.Vote.Prop <- max_votes_10/ge_10_main$Votes
+ge_15_main$Highest.Vote.Prop <- max_votes_15/ge_15_main$Votes
+
+head(ge_10_main, 2)
+head(ge_15_main, 2)
+```
+
+```{r add_prop_out, echo = FALSE}
+knitr::kable(head(ge_10_main, 2))
+knitr::kable(head(ge_15_main, 2))
+```
+
+For this walkthrough, we are going to choose the features to use in the model using our intuition. However, there is more information on various methods to choose features [here](http://scikit-learn.org/stable/modules/feature_selection.html) and [here](https://www.analyticsvidhya.com/blog/2016/12/introduction-to-feature-selection-methods-with-an-example-or-how-to-select-the-right-variables/). The features we have chosen are _Constituency Type_, _Highest Vote Proportion_, _Electorate_ and _Votes Cast_.
+
+We need to find the winning party in each constituency, the we make a dataframe with only the name and the predictor variables.
+
+```{r find_winner, cache = TRUE}
+winner_10 <- colnames(votes_10)[max.col(votes_10)]
+winner_15 <- colnames(votes_15)[max.col(votes_15)]
+
+ge_10_main$Winning.Party <- winner_10
+ge_15_main$Winning.Party <- winner_15
+
+predictors_10 <- select(ge_10_main, c("Constituency.Name", "Constituency.Type",
+                                      "Winning.Party", "Electorate",
+                                      "Votes", "Highest.Vote.Prop"))
+predictors_15 <- select(ge_15_main, c("Constituency.Name", "Constituency.Type",
+                                      "Winning.Party", "Electorate",
+                                      "Votes", "Highest.Vote.Prop"))
+```
+
+We have ended up with a dataframe of all of our predictors and Constituency Name. This is what we are going to use to fit our model and make predictions.
+
+## Modeling
+
+In this section we are going to fit our model, make predictions and calculate how accurate our model fit was by comparing it with the actual results.
+
+### Fitting the Model
+
+We are going to use the `caret` package to train a random forest model on our predictors, to predict the winning party.
+
+```{r fit_model, cache = TRUE, warning = FALSE, message = FALSE}
+party_model <- train(Winning.Party ~ ., data = predictors_10[ , -1], method = "rf")
+```
+
+### Making Predictions
+
+Now we have a model we are going to make predictions for the 2015 data.
+
+```{r make_predictions, cache = TRUE}
+predict_15 <- predict(party_model, predictors_15)
+predict_15[1:10]
+```
+
+
+### Model Validation
+
+Finally, we can compare what our model has predicted to the real outcome. This is important because it lets us see if our model fit needs improvement.
+
+```{r test_model}
+number_correct <- sum(predict_15 == ge_15_main$Winning.Party)
+percentage_correct <- number_correct/nrow(ge_15_main) * 100
+sprintf("Our model was %.2f%%  accurate!", percentage_correct)
+```
+
+It's a great start but it looks like our model could do with some work. 
+
+In this walkthrough we have imported and processed our data, engineered some features, fitted a Decision Tree Classifier, predicted which party wins each seat in the 2015 general election and then validated our model. 
+
+So, what next...?
+
+## Extensions
+
+- You can have a look at the other Modeling Walkthrough on the [GitHub repository](https://github.com/MangoTheCat/rss-2018-hackathon) which looks at a slightly more complex procedure and fits a regression model.
+
+- You can fork this notebook and pick up where we left off by trying out some new models, or improve this one.
+
+- Or you could choose something else to predict, like maybe using the model_2015 data set to predict how people voted in the EU referendum.
+
+The possibilities are endless!
